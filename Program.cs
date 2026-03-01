@@ -6,27 +6,35 @@ class Program
 {
     static void Main(string[] args)
     {
-        try
+        while (true)
         {
-            Console.Write("Введите выражение: ");
-            string input = Console.ReadLine() ?? "";
-
-            if (string.IsNullOrWhiteSpace(input))
+            try
             {
-                Console.WriteLine("Ошибка: выражение не введено");
-                return;
-            }
+                Console.Write("Введите выражение (exit для выхода): ");
+                string input = Console.ReadLine() ?? "";
+                if (input.Trim().Equals("exit", StringComparison.OrdinalIgnoreCase))
+                    break;
 
-            // Используем публичный API калькулятора
-            string rpnExpr = "";
-            decimal result = Calculator.EvaluateWithRPN(input, out rpnExpr);
-            
-            // Console.WriteLine($"Промежуточный результат: {rpnExpr}");
-            Console.WriteLine($"Финальный результат: {result}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Ошибка обработки: {ex.Message}");
+                if (string.IsNullOrWhiteSpace(input))
+                {
+                    Console.WriteLine("Ошибка: выражение не введено");
+                    return;
+                }
+
+                // Используем публичный API калькулятора
+                string rpnExpr = "";
+                decimal result = Calculator.EvaluateWithRPN(input, out rpnExpr);
+                
+                // Console.WriteLine($"Промежуточный результат: {rpnExpr}");
+                Console.WriteLine($"результат: {result}");
+
+
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка обработки: {ex.Message}");
+            }
+            // break;
         }
     }
 }
