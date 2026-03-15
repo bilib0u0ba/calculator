@@ -10,8 +10,8 @@ namespace calculator;
 /// </summary>
 public class Calculator
 {
-    // Регулярное выражение для разбиения выражения на токены (числа, операторы, функции)
-    private const string TOKEN_PATTERN = @"(max|min|root|hypot|sqrt|sin|cos|tan|!|log|ln|lg|\d+\.\d+|\d+|[-+*/(),^])";
+    // Регулярное выражение для разбиения выражения на токены (числа, операторы, функции, переменные)
+    private const string TOKEN_PATTERN = @"(max|min|root|hypot|sqrt|sin|cos|tan|log|ln|lg|[A-Za-z_][A-Za-z0-9_]*|\d+\.\d+|\d+|[-+*/(),^!])";
     
     // Набор бинарных операторов: +, -, *, /, ^
     private static readonly HashSet<string> OPERATORS = new() { "+", "-", "*", "/", "^" };
@@ -28,6 +28,13 @@ public class Calculator
     // Объединённый набор всех функций (исключая постфиксные операторы которые обрабатываются отдельно)
     private static readonly HashSet<string> ALL_FUNCTIONS = new(UNARY_FUNCTIONS.Concat(BINARY_FUNCTIONS));
 
+    // Встроенные математические константы (доступны без ввода пользователем)
+    private static readonly IReadOnlyDictionary<string, decimal> CONSTANTS = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["pi"] = (decimal)Math.PI,
+        ["e"] = (decimal)Math.E
+    };
+
     /// <summary>
     /// Вычисляет математическое выражение и возвращает результат
     /// </summary>
@@ -36,12 +43,24 @@ public class Calculator
     /// <exception cref="ArgumentException">Выбрасывается при ошибке в выражении</exception>
     public static decimal Evaluate(string expression)
     {
+        return Evaluate(expression, null);
+    }
+
+    /// <summary>
+    /// Вычисляет математическое выражение с переменными и возвращает результат
+    /// </summary>
+    /// <param name="expression">Математическое выражение в виде строки (например, "a+b*4")</param>
+    /// <param name="variables">Словарь значений переменных</param>
+    /// <returns>Результат вычисления</returns>
+    /// <exception cref="ArgumentException">Выбрасывается при ошибке в выражении</exception>
+    public static decimal Evaluate(string expression, IReadOnlyDictionary<string, decimal>? variables)
+    {
         if (string.IsNullOrWhiteSpace(expression))
             throw new ArgumentException("Выражение не должно быть пустым", nameof(expression));
 
         try
         {
-            var parser = new ExpressionParser(expression);
+            var parser = new ExpressionParser(expression, variables);
             var rpnExpression = parser.Parse();
             var rpnQueue = new Queue<string>(rpnExpression.Split(' '));
             var calculator = new RPNCalculator(rpnQueue);
@@ -61,12 +80,24 @@ public class Calculator
     /// <returns>Результат вычисления</returns>
     public static decimal EvaluateWithRPN(string expression, out string rpnExpression)
     {
+        return EvaluateWithRPN(expression, out rpnExpression, null);
+    }
+
+    /// <summary>
+    /// Вычисляет выражение с переменными и возвращает результат с дополнительной информацией о RPN представлении
+    /// </summary>
+    /// <param name="expression">Математическое выражение</param>
+    /// <param name="rpnExpression">Выходной параметр с выражением в обратной польской нотации</param>
+    /// <param name="variables">Словарь значений переменных</param>
+    /// <returns>Результат вычисления</returns>
+    public static decimal EvaluateWithRPN(string expression, out string rpnExpression, IReadOnlyDictionary<string, decimal>? variables)
+    {
         if (string.IsNullOrWhiteSpace(expression))
             throw new ArgumentException("Выражение не должно быть пустым", nameof(expression));
 
         try
         {
-            var parser = new ExpressionParser(expression);
+            var parser = new ExpressionParser(expression, variables);
             rpnExpression = parser.Parse();
             var rpnQueue = new Queue<string>(rpnExpression.Split(' '));
             var calculator = new RPNCalculator(rpnQueue);
@@ -83,13 +114,17 @@ public class Calculator
     private class ExpressionParser
     {
         private readonly string expression;
+        private readonly IReadOnlyDictionary<string, decimal> variableValues;
         private readonly Queue<string> tokenQueue;
         private readonly Stack<string> operatorStack;
 
         // Конструктор инициализирует парсер с исходным выражением
-        public ExpressionParser(string expression)
+        public ExpressionParser(string expression, IReadOnlyDictionary<string, decimal>? variables)
         {
             this.expression = expression;
+            variableValues = variables is null
+                ? new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, decimal>(variables, StringComparer.OrdinalIgnoreCase);
             tokenQueue = new Queue<string>();
             operatorStack = new Stack<string>();
         }
@@ -105,11 +140,31 @@ public class Calculator
         {
             // Находим все совпадения TOKEN_PATTERN в выражении
             MatchCollection matches = Regex.Matches(expression, TOKEN_PATTERN);
+            int currentPosition = 0;
 
             // Добавляем найденные токены в очередь
             foreach (Match match in matches)
             {
+                if (match.Index > currentPosition)
+                {
+                    string skipped = expression.Substring(currentPosition, match.Index - currentPosition);
+                    if (!string.IsNullOrWhiteSpace(skipped))
+                    {
+                        throw new InvalidOperationException($"Недопустимый токен '{skipped}' в позиции {currentPosition + 1}");
+                    }
+                }
+
                 tokenQueue.Enqueue(match.Value);
+                currentPosition = match.Index + match.Length;
+            }
+
+            if (currentPosition < expression.Length)
+            {
+                string tail = expression.Substring(currentPosition);
+                if (!string.IsNullOrWhiteSpace(tail))
+                {
+                    throw new InvalidOperationException($"Недопустимый токен '{tail}' в позиции {currentPosition + 1}");
+                }
             }
         }
 
@@ -160,6 +215,22 @@ public class Calculator
                 {
                     // Числа сразу добавляются в результат
                     result.Add(token);
+                }
+                else if (IsVariableName(token))
+                {
+                    // Переменная/константа заменяется на числовое значение
+                    if (CONSTANTS.TryGetValue(token, out decimal constantValue))
+                    {
+                        result.Add(constantValue.ToString(CultureInfo.InvariantCulture));
+                    }
+                    else if (variableValues.TryGetValue(token, out decimal variableValue))
+                    {
+                        result.Add(variableValue.ToString(CultureInfo.InvariantCulture));
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"Неизвестная переменная: {token}");
+                    }
                 }
                 else if (IsPostfixOperator(token))
                 {
@@ -272,6 +343,12 @@ public class Calculator
         {
             // Проверяем, является ли токен названием функции (унарной или бинарной), исключая постфиксные операторы
             return ALL_FUNCTIONS.Contains(token) && !POSTFIX_OPERATORS.Contains(token);
+        }
+
+        private static bool IsVariableName(string token)
+        {
+            // Переменная: идентификатор, который не является именем функции
+            return Regex.IsMatch(token, @"^[A-Za-z_][A-Za-z0-9_]*$") && !IsFunctionName(token);
         }
 
         private static bool IsBinaryFunction(string token)

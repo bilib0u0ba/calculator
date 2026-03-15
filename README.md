@@ -81,6 +81,10 @@ Console.WriteLine($"Результат: {result}"); // 14
 - `(...)` - скобки для группировки
 - Унарный минус поддерживается (например, `-5`)
 
+### Константы
+- `pi` - число π (3.141592653589793...)
+- `e` - число Эйлера (2.718281828459045...)
+
 ## Примеры использования
 
 ```csharp
@@ -100,6 +104,8 @@ Calculator.Evaluate("5!");            // 120
 Calculator.Evaluate("sin(3.14159/2)"); // ≈ 1
 Calculator.Evaluate("sqrt(12-3*2^(-5))"); // ≈ 3.45
 Calculator.Evaluate("(2+3)*4-10/2"); // 15
+Calculator.Evaluate("cos(pi)");      // -1
+Calculator.Evaluate("ln(e)");        // 1
 
 // С десятичными числами
 Calculator.Evaluate("3.14*2");        // 6.28
